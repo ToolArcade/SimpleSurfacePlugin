@@ -1,0 +1,29 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "SimpleSurface",
+	"Description": "Quickly apply simple, colorful shading to meshes.",
+	"Category": "Rendering",
+	"CreatedBy": "Jeff Stewart",
+	"CreatedByURL": "https://object01.github.io",
+	"DocsURL": "https://github.com/object01/SimpleSurfacePlugin",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": true,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": true,
+	"Modules": [
+		{
+			"Name": "SimpleSurface",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Icon": "Resources/SimpleSurfaceIcon.png",
+	"SupportedTargetPlatforms": [
+		"Win64",
+		"Mac"
+	]
+}

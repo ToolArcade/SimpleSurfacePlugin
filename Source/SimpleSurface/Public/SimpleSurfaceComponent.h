@@ -3,9 +3,15 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Templates/Tuple.h"
+#include "Components/ActorComponent.h"
 
 #include "SimpleSurfaceComponent.generated.h"
+
+class UMaterialInterface;
+class UMaterialInstanceDynamic;
+class UMaterialInstance;
+class UTexture2D;
+class UMeshComponent;
 
 USTRUCT()
 struct FCapturedMaterialSlots
@@ -13,7 +19,7 @@ struct FCapturedMaterialSlots
 	GENERATED_BODY()
 
 	UPROPERTY()
-	TMap<int, TSoftObjectPtr<UMaterialInterface>> SlotMaterialMap;
+	TMap<int32, TSoftObjectPtr<UMaterialInterface>> SlotMaterialMap;
 };
 
 /**
@@ -111,6 +117,7 @@ protected:
 
 	UFUNCTION(CallInEditor)
 	void ApplyMaterialToMeshes() const;
+
 	void CaptureMaterials();
 	void TryRestoreMaterials();
 

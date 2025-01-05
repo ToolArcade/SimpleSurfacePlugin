@@ -3,7 +3,7 @@
 	"Version": 1,
 	"VersionName": "1.0",
 	"FriendlyName": "SimpleSurface",
-	"Description": "Quickly apply simple, colorful shading to meshes.",
+	"Description": "Quickly apply colorful, tweakable shading to meshes.",
 	"Category": "Rendering",
 	"CreatedBy": "Jeff Stewart",
 	"CreatedByURL": "https://object01.github.io",

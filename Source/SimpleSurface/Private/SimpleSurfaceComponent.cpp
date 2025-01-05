@@ -3,6 +3,13 @@
 
 #include "SimpleSurfaceComponent.h"
 
+#include "GameFramework/Actor.h"
+#include "Components/MeshComponent.h"
+#include "UObject/ConstructorHelpers.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Materials/MaterialInstance.h"
+#include "Materials/MaterialInterface.h"
+
 void USimpleSurfaceComponent::DestroyComponent(bool bPromoteChildren)
 {
 	TryRestoreMaterials();
@@ -190,8 +197,8 @@ void USimpleSurfaceComponent::TryRestoreMaterials()
 
 void USimpleSurfaceComponent::ClearOverrideMaterials() const
 {
-	TArray<UStaticMeshComponent*> MeshComponents;
-	GetOwner()->GetComponents<UStaticMeshComponent>(MeshComponents);
+	TArray<UMeshComponent*> MeshComponents;
+	GetOwner()->GetComponents<UMeshComponent>(MeshComponents);
 
 	for (auto MeshComponent : MeshComponents)
 	{

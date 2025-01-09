@@ -65,7 +65,7 @@ USimpleSurfaceComponent::USimpleSurfaceComponent()
 	bWantsInitializeComponent = true;
 
 	// TODO: Use a soft reference instead?  Unclear whether this tightly binds the plugin to the material somehow...
-	static ConstructorHelpers::FObjectFinder<UMaterialInstance> MaterialFinder(TEXT("/SimpleSurface/Materials/MI_DreamsMaterial.MI_DreamsMaterial"));
+	static ConstructorHelpers::FObjectFinder<UMaterialInstance> MaterialFinder(TEXT("/SimpleSurface/Materials/MI_SimpleSurface.MI_SimpleSurface"));
 
 	if (MaterialFinder.Succeeded() && !BaseMaterial)
 	{
@@ -95,6 +95,12 @@ void USimpleSurfaceComponent::Activate(bool bReset)
 	}
 
 	Super::Activate(bReset);
+}
+
+void USimpleSurfaceComponent::Deactivate()
+{
+	TryRestoreMaterials();
+	Super::Deactivate();
 }
 
 void USimpleSurfaceComponent::InitializeSharedMID()

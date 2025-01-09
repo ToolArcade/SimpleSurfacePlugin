@@ -69,6 +69,7 @@ public:
 	USimpleSurfaceComponent();
 
 	virtual void Activate(bool bReset) override;
+	virtual void Deactivate() override;
 
 	virtual void DestroyComponent(bool bPromoteChildren = false) override;
 
@@ -109,18 +110,14 @@ public:
 	TObjectPtr<UTexture> Texture;
 
 protected:
-	UFUNCTION(CallInEditor)
 	void InitializeSharedMID();
 
-	UFUNCTION(CallInEditor)
 	void ApplyParametersToMaterial() const;
 
-	UFUNCTION(CallInEditor)
 	void ApplyMaterialToMeshes() const;
 
 	void CaptureMaterials();
 	void TryRestoreMaterials();
 
-	UFUNCTION(CallInEditor)
 	void ClearOverrideMaterials() const;
 };

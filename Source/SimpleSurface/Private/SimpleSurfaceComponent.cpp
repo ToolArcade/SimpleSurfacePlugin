@@ -9,10 +9,15 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInstance.h"
 #include "Materials/MaterialInterface.h"
+#include "CoreMinimal.h"
+#include "GameFramework/Actor.h"
+#include "Components/ActorComponent.h"
+#include "FComponentIterator.h"
 
 void USimpleSurfaceComponent::DestroyComponent(bool bPromoteChildren)
 {
 	TryRestoreMaterials();
+	ClearCapturedMaterials();
 	Super::DestroyComponent(bPromoteChildren);
 }
 
@@ -66,7 +71,8 @@ USimpleSurfaceComponent::USimpleSurfaceComponent(FObjectInitializer const& Objec
 	bWantsInitializeComponent = true;
 
 	// TODO: Use a soft reference instead?  Unclear whether this tightly binds the plugin to the material somehow...
-	static ConstructorHelpers::FObjectFinder<UMaterialInstance> MaterialFinder(TEXT("/SimpleSurface/Materials/MI_SimpleSurface.MI_SimpleSurface"));
+	static ConstructorHelpers::FObjectFinder<UMaterialInstance> MaterialFinder(
+		TEXT("/SimpleSurface/Materials/MI_SimpleSurface.MI_SimpleSurface"));
 
 	if (MaterialFinder.Succeeded() && !BaseMaterial)
 	{
@@ -81,36 +87,19 @@ USimpleSurfaceComponent::USimpleSurfaceComponent(FObjectInitializer const& Objec
 	// Set this component to be initialized when the game starts, and to be ticked every frame.  You can turn these features
 	// off to improve performance if you don't need them.
 	PrimaryComponentTick.bCanEverTick = true;
-
-	// Use ObjectInitializer's InstancingGraph to fixup CapturedMaterials components for duplicates, so it points to the duplicate's components instead of the original's.
-	if (auto instancingGraph = ObjectInitializer.Get().GetInstancingGraph())
-	{
-		auto MyOwner = this->GetOwner();
-		auto Src = instancingGraph->GetDestinationObject(MyOwner);
-		auto SourceActor = Cast<AActor>(Src);
-
-		if (auto SourceComponent = SourceActor ? Cast<USimpleSurfaceComponent>(SourceActor->FindComponentByClass(USimpleSurfaceComponent::StaticClass())) : nullptr)
-		{
-			auto SourceCapturedMaterials = SourceComponent->CapturedMaterials;
-			TArray<TSoftObjectPtr<UMeshComponent>> OutKeys = {};
-			SourceCapturedMaterials.GetKeys(OutKeys);
-			for (auto SourceMeshComponent : OutKeys)
-			{
-				if (auto TargetComponent = Cast<UMeshComponent>(instancingGraph->GetDestinationObject(SourceMeshComponent.Get())))
-				{
-					CapturedMaterials.Add(TargetComponent, SourceCapturedMaterials.FindAndRemoveChecked(SourceMeshComponent));
-				}
-			}
-		}
-	}
 }
 
 void USimpleSurfaceComponent::Activate(bool bReset)
 {
 	ensure(SimpleSurfaceMaterial.Get());
 
-	CaptureMaterials();
-
+	// If materials haven't been captured yet, capture them now, as is the case when the component is first activated.
+	// If materials have been captured, it means the component is being reactivated after being deactivated, or is being activated following some other operation like Duplicate, so don't capture them again.
+	if (CapturedMaterials.Num() == 0)
+	{
+		CaptureMaterials();
+	}
+	
 	if (SimpleSurfaceMaterial)
 	{
 		ApplyParametersToMaterial();
@@ -179,21 +168,29 @@ void USimpleSurfaceComponent::CaptureMaterials()
 		return;
 	}
 
-	TArray<UMeshComponent*> MeshComponents;
-	GetOwner()->GetComponents<UMeshComponent>(MeshComponents);
+	AActor* MyActor = GetOwner();
+	FComponentIterator ComponentIterator(MyActor);
 
-	for (TObjectPtr<UMeshComponent> MeshComponent : MeshComponents)
+	for (const FComponentIterator::FComponentInfo& ComponentInfo : ComponentIterator.GetComponents())
 	{
-		FCapturedMaterialSlots& CapturedMeshMaterials = CapturedMaterials.FindOrAdd(MeshComponent);
-		for (auto i = 0; i < MeshComponent->GetNumMaterials(); i++)
+		UActorComponent* Component = ComponentInfo.Component;
+		if (auto MeshComponent = Cast<UMeshComponent>(Component))
 		{
-			// To handle cases where an Undo is restoring the component, materials may have already been changed back to this component's material,
-			// before the component itself is restored.  So don't attempt to capture the material if it's already the SimpleSurfaceMaterial.
-			auto Material = MeshComponent->GetMaterial(i);
-			if (Material != SimpleSurfaceMaterial)
+			FCapturedMaterialSlotsEx CapturedMeshMaterials;
+			CapturedMeshMaterials.ComponentPathAsChildIndexes = ComponentInfo.ChildIndices;
+
+			for (auto i = 0; i < MeshComponent->GetNumMaterials(); i++)
 			{
-				CapturedMeshMaterials.SlotMaterialMap.Add(i, Material);
+				// To handle cases where an Undo is restoring the component, materials may have already been changed back to this component's material,
+				// before the component itself is restored.  So don't attempt to capture the material if it's already the SimpleSurfaceMaterial.
+				auto Material = MeshComponent->GetMaterial(i);
+				if (Material != SimpleSurfaceMaterial)
+				{
+					CapturedMeshMaterials.MaterialsBySlot.Add(i, Material);
+				}
 			}
+
+			CapturedMaterials.Add(CapturedMeshMaterials);
 		}
 	}
 }
@@ -204,33 +201,54 @@ void USimpleSurfaceComponent::CaptureMaterials()
  */
 void USimpleSurfaceComponent::TryRestoreMaterials()
 {
-	for (auto& CapturedMeshMaterials : CapturedMaterials)
+	if (!GetOwner())
 	{
-		auto CapturedMaterialSlots = CapturedMeshMaterials.Value;
+		return;
+	}
 
-		if (auto MeshComponent = CapturedMeshMaterials.Key.Get())
+	AActor* MyActor = GetOwner();
+
+	for (const FCapturedMaterialSlotsEx& CapturedMeshMaterials : CapturedMaterials)
+	{
+		// Acquire the component by traversing the child collections by indicies.
+		USceneComponent* Component = MyActor->GetRootComponent();
+
+		for (int32 ChildIndex : CapturedMeshMaterials.ComponentPathAsChildIndexes)
 		{
-			for (auto i = 0; i < MeshComponent->GetNumMaterials(); i++)
+			if (!Component)
 			{
-				if (CapturedMaterialSlots.SlotMaterialMap.Contains(i))
-				{
-					if (auto Material = CapturedMaterialSlots.SlotMaterialMap[i].Get())
-					{
-						MeshComponent->SetMaterial(i, Material);
-					}
-				}
+				Component = MyActor->GetRootComponent();
+			}
+			else
+			{
+				Component = Component->GetChildComponent(ChildIndex);
+			}
+		}
+
+		if (!Component)
+		{
+			continue;
+		}
+
+		auto MeshComponent = Cast<UMeshComponent>(Component);
+		if (!MeshComponent)
+		{
+			continue;
+		}
+
+		// Having identified the mesh component for this entry, restore its materials slot by slot.
+		for (const auto& SlotMaterialPair : CapturedMeshMaterials.MaterialsBySlot)
+		{
+			const int32 Slot = SlotMaterialPair.Key;
+			if (const auto Material = SlotMaterialPair.Value.Get())
+			{
+				MeshComponent->SetMaterial(Slot, Material);
 			}
 		}
 	}
 }
 
-void USimpleSurfaceComponent::ClearOverrideMaterials() const
+void USimpleSurfaceComponent::ClearCapturedMaterials()
 {
-	TArray<UMeshComponent*> MeshComponents;
-	GetOwner()->GetComponents<UMeshComponent>(MeshComponents);
-
-	for (auto MeshComponent : MeshComponents)
-	{
-		MeshComponent->EmptyOverrideMaterials();
-	}
+	CapturedMaterials.Empty();
 }

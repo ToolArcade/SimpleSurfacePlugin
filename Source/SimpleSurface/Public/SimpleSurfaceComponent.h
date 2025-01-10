@@ -14,12 +14,15 @@ class UTexture2D;
 class UMeshComponent;
 
 USTRUCT()
-struct FCapturedMaterialSlots
+struct FCapturedMaterialSlotsEx
 {
 	GENERATED_BODY()
 
 	UPROPERTY()
-	TMap<int32, TSoftObjectPtr<UMaterialInterface>> SlotMaterialMap;
+	TArray<int32> ComponentPathAsChildIndexes;
+
+	UPROPERTY()
+	TMap<int32, TObjectPtr<UMaterialInterface>> MaterialsBySlot;
 };
 
 /**
@@ -40,9 +43,9 @@ private:
 	/**
 	 * Stores soft references to captured materials so they may be restored if the component is deleted, even across Editor sessions.
 	 */
-	UPROPERTY(DuplicateTransient)
-	TMap<TSoftObjectPtr<UMeshComponent>, FCapturedMaterialSlots> CapturedMaterials;
-
+	UPROPERTY()
+	TArray<FCapturedMaterialSlotsEx> CapturedMaterials;
+	
 	UFUNCTION()
 	void SetParameter_Color(const FColor InColor);
 
@@ -125,6 +128,5 @@ protected:
 
 	void CaptureMaterials();
 	void TryRestoreMaterials();
-
-	void ClearOverrideMaterials() const;
+	void ClearCapturedMaterials();
 };

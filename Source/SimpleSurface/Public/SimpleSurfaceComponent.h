@@ -40,7 +40,7 @@ private:
 	/**
 	 * Stores soft references to captured materials so they may be restored if the component is deleted, even across Editor sessions.
 	 */
-	UPROPERTY()
+	UPROPERTY(DuplicateTransient)
 	TMap<TSoftObjectPtr<UMeshComponent>, FCapturedMaterialSlots> CapturedMaterials;
 
 	UFUNCTION()
@@ -66,26 +66,30 @@ private:
 
 public:
 	// Sets default values for this component's properties
-	USimpleSurfaceComponent();
+	USimpleSurfaceComponent(FObjectInitializer const& ObjectInitializer);
 
 	virtual void Activate(bool bReset) override;
 	virtual void Deactivate() override;
 
 	virtual void DestroyComponent(bool bPromoteChildren = false) override;
 
-	UPROPERTY(DisplayName = "🖌️ Color", Category = "🎨 Simple Surface", EditAnywhere, BlueprintReadWrite, Setter = SetParameter_Color,
+	UPROPERTY(DisplayName = "🖌️ Color", Category = "🎨 Simple Surface", EditAnywhere, BlueprintReadWrite,
+		Setter = SetParameter_Color,
 		meta = (HideAlphaChannel))
 	FColor Color = FColor::FromHex("D84DC2");
 
-	UPROPERTY(DisplayName = "☀️ Glow", Category = "🎨 Simple Surface", EditAnywhere, BlueprintReadWrite, meta=(ClampMin=0.0f, ClampMax=1.0f),
+	UPROPERTY(DisplayName = "☀️ Glow", Category = "🎨 Simple Surface", EditAnywhere, BlueprintReadWrite,
+		meta=(ClampMin=0.0f, ClampMax=1.0f),
 		Setter = SetParameter_Glow)
 	float Glow = 0.0f;
 
-	UPROPERTY(DisplayName = "💎 Shininess / Roughness 🍞", Category = "🎨 Simple Surface", EditAnywhere, BlueprintReadWrite,
+	UPROPERTY(DisplayName = "💎 Shininess / Roughness 🍞", Category = "🎨 Simple Surface", EditAnywhere,
+		BlueprintReadWrite,
 		meta=(ClampMin=0.0f, ClampMax=1.0f), Setter = SetParameter_ShininessRoughness)
 	float ShininessRoughness = 0.5f;
 
-	UPROPERTY(DisplayName = "🕯️ Waxiness / Metalness 🔩", Category = "🎨 Simple Surface", EditAnywhere, BlueprintReadWrite,
+	UPROPERTY(DisplayName = "🕯️ Waxiness / Metalness 🔩", Category = "🎨 Simple Surface", EditAnywhere,
+		BlueprintReadWrite,
 		meta=(ClampMin=0.0f, ClampMax=1.0f), Setter = SetParameter_WaxinessMetalness)
 	float WaxinessMetalness = 0.5f;
 
@@ -93,20 +97,23 @@ public:
 	 * The intensity of the object's texture.  Setting this to zero effectively disables the texture.
 	 */
 	UPROPERTY(DisplayName = "🧱 Texture Intensity", Category = "🎨 Simple Surface", EditAnywhere, BlueprintReadWrite,
-		meta=(ClampMin=0.0f, ClampMax=1.0f, DisplayPriority = 10, DisplayAfter = Appearance), Setter = SetParameter_TextureIntensity)
+		meta=(ClampMin=0.0f, ClampMax=1.0f, DisplayPriority = 10, DisplayAfter = Appearance),
+		Setter = SetParameter_TextureIntensity)
 	float TextureIntensity = 0.1f;
 
 	/**
 	 * The scale of the object's texture.
 	 */
 	UPROPERTY(DisplayName = "🧱 Texture Scale", Category = "🎨 Simple Surface", EditAnywhere, BlueprintReadWrite,
-		meta=(ClampMin=0.0f, ClampMax=1.0f, DisplayPriority = 20, DisplayAfter = Appearance), Setter = SetParameter_TextureScale)
+		meta=(ClampMin=0.0f, ClampMax=1.0f, DisplayPriority = 20, DisplayAfter = Appearance),
+		Setter = SetParameter_TextureScale)
 	float TextureScale = 1.0f;
 
 	/**
 	 * An optional texture to use as a normal map instead of the built-in texture.
 	 */
-	UPROPERTY(DisplayName = "🧱 Texture Override", Category = "🎨 Simple Surface", EditAnywhere, BlueprintReadWrite, Setter = SetParameter_Texture, meta = (DisplayPriority = 30, DisplayAfter = Appearance))
+	UPROPERTY(DisplayName = "🧱 Texture Override", Category = "🎨 Simple Surface", EditAnywhere, BlueprintReadWrite,
+		Setter = SetParameter_Texture, meta = (DisplayPriority = 30, DisplayAfter = Appearance))
 	TObjectPtr<UTexture> Texture;
 
 protected:

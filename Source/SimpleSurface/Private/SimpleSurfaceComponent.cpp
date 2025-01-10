@@ -59,7 +59,8 @@ void USimpleSurfaceComponent::SetParameter_TextureScale(float InValue)
 }
 
 // Sets default values for this component's properties
-USimpleSurfaceComponent::USimpleSurfaceComponent()
+USimpleSurfaceComponent::USimpleSurfaceComponent(FObjectInitializer const& ObjectInitializer)
+	: Super(ObjectInitializer)
 {
 	bAutoActivate = true;
 	bWantsInitializeComponent = true;
@@ -80,6 +81,28 @@ USimpleSurfaceComponent::USimpleSurfaceComponent()
 	// Set this component to be initialized when the game starts, and to be ticked every frame.  You can turn these features
 	// off to improve performance if you don't need them.
 	PrimaryComponentTick.bCanEverTick = true;
+
+	// Use ObjectInitializer's InstancingGraph to fixup CapturedMaterials components for duplicates, so it points to the duplicate's components instead of the original's.
+	if (auto instancingGraph = ObjectInitializer.Get().GetInstancingGraph())
+	{
+		auto MyOwner = this->GetOwner();
+		auto Src = instancingGraph->GetDestinationObject(MyOwner);
+		auto SourceActor = Cast<AActor>(Src);
+
+		if (auto SourceComponent = SourceActor ? Cast<USimpleSurfaceComponent>(SourceActor->FindComponentByClass(USimpleSurfaceComponent::StaticClass())) : nullptr)
+		{
+			auto SourceCapturedMaterials = SourceComponent->CapturedMaterials;
+			TArray<TSoftObjectPtr<UMeshComponent>> OutKeys = {};
+			SourceCapturedMaterials.GetKeys(OutKeys);
+			for (auto SourceMeshComponent : OutKeys)
+			{
+				if (auto TargetComponent = Cast<UMeshComponent>(instancingGraph->GetDestinationObject(SourceMeshComponent.Get())))
+				{
+					CapturedMaterials.Add(TargetComponent, SourceCapturedMaterials.FindAndRemoveChecked(SourceMeshComponent));
+				}
+			}
+		}
+	}
 }
 
 void USimpleSurfaceComponent::Activate(bool bReset)

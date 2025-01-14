@@ -18,4 +18,4 @@ Now you can change its color and some simple surface properties to get a differe
 If you remove the component (or deactivate it using Blueprint), the meshes' original materials will be restored.
 
 ## How do I get it?
-Get it here if you want to build from source, otherwise get it from the Fab Marketplace.
+It's not quite ready yet.  Stay tuned!

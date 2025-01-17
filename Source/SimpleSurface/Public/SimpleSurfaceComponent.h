@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "Components/DynamicMeshComponent.h"
 #include "UObject/UObjectGlobals.h"
 
 #include "SimpleSurfaceComponent.generated.h"
@@ -19,17 +20,169 @@ DECLARE_LOG_CATEGORY_EXTERN(LogSimpleSurface, Log, All);
 using ComponentMaterialMap = TMap<TObjectPtr<UMeshComponent>, TMap<int32, TObjectPtr<UMaterialInterface>>>;
 
 USTRUCT()
-struct FCapturedMaterialSlotsEx
+struct FMeshCatalogRecord
 {
 	GENERATED_BODY()
 
-	UPROPERTY()
-	TArray<int32> ComponentPathAsChildIndexes;
+	FMeshCatalogRecord() = default;
+
+	FMeshCatalogRecord(UMeshComponent& Component, const TArray<const TSoftClassPtr<UMaterialInterface>>& Ex)
+	{
+		ExcludedMaterialClasses = Ex;
+		UpdateRecord(Component);
+	}
+
+	/**
+	 * Updates this record to reflect the specified @see UMeshComponent.
+	 */
+	void UpdateRecord(UMeshComponent& Component)
+	{
+		MeshHash = GetMeshHash(&Component);
+		IndexPath = GetIndexPath(Component);
+		UpdateMaterialsBySlot(Component);
+	}
 
 	UPROPERTY()
-	TMap<int32, TObjectPtr<UMaterialInterface>> MaterialsBySlot;
+	TArray<int32> IndexPath;
+	
+	/**
+	 * Returns an array of indexes that represent the path to the component from the root component.
+	 */
+	static TArray<int32> GetIndexPath(UMeshComponent& MeshComponent)
+	{
+		TArray<int32> Result;
+		USceneComponent* Current = &MeshComponent;
+		while (Current)
+		{
+			if (auto Parent = Cast<USceneComponent>(Current->GetAttachParent()))
+			{
+				Result.Insert(Parent->GetAttachChildren().Find(Current), 0);
+				Current = Parent;
+			}
+			else
+			{
+				break;
+			}
+		}
+		
+		return Result;
+	}
+
+	/**
+	 * Uses @see IndexPath to locate a component on the specified actor.  Useful for remapping a record to a new actor, e.g. after duplication. 
+	 */
+	UMeshComponent* LocateComponent(const AActor &Actor)
+	{
+		// Locate the component corresponding to IndexPath.
+		USceneComponent* Current = Actor.GetRootComponent();
+		for (auto Index : IndexPath)
+		{
+			if (Current)
+			{
+				auto Children = Current->GetAttachChildren();
+				if (Index < Children.Num())
+				{
+					Current = Children[Index];
+				}
+				else
+				{
+					Current = nullptr;
+				}
+			}
+			else
+			{
+				break;
+			}
+		}
+
+		return Cast<UMeshComponent>(Current);
+	}
+
+	/**
+	 * Applies the materials captured by this record to the specified UMeshComponent.
+	 */
+	void ApplyMaterials(UMeshComponent& MeshComponent) const
+	{
+		for (int32 i = 0; i < MaterialsBySlot.Num(); ++i)
+		{
+			auto SoftMaterialPtr = MaterialsBySlot[i];
+			if (const auto Material = SoftMaterialPtr.IsValid() ? SoftMaterialPtr.Get() : SoftMaterialPtr.LoadSynchronous())
+			{
+				MeshComponent.SetMaterial(i, Material);
+			}
+		}
+	}
+
+	/**
+	 * Accumulates the materials used by the specified UMeshComponent into this record's MaterialsBySlot.
+	 * Skips any materials matching the classes in ExcludedMaterialClasses.
+	 */
+	void UpdateMaterialsBySlot(const UMeshComponent& MeshComponent)
+	{
+		// Take care to update the slots one by one, don't just copy the array; because we don't want to capture
+		// excluded materials.
+		MaterialsBySlot.SetNum(MeshComponent.GetNumMaterials());
+		for (auto i = 0; i < MeshComponent.GetNumMaterials(); i++)
+		{
+			auto Material = MeshComponent.GetMaterial(i);
+			if (Material && !ExcludedMaterialClasses.Contains(Material->GetClass()))
+			{
+				MaterialsBySlot[i] = Material;
+			}
+		}
+	}
+
+	bool MeshEquals(UMeshComponent& Component) const
+	{
+		return MeshHash == GetMeshHash(&Component);
+	}
+
+	bool operator==(const FMeshCatalogRecord& Other) const
+	{
+		return MeshHash == Other.MeshHash && MaterialsBySlot == Other.MaterialsBySlot;
+	}
+
+	/**
+	 * A hash of the mesh presented by MeshComponent.  Used to determine if an existing MeshComponent's mesh changed.
+	 */
+	UPROPERTY()
+	uint32 MeshHash;
+
+	/**
+	 * A map of material slot indexes to materials.
+	 */
+	UPROPERTY()
+	TArray<TSoftObjectPtr<UMaterialInterface>> MaterialsBySlot;
+
+	UPROPERTY()
+	TArray<const TSoftClassPtr<UMaterialInterface>> ExcludedMaterialClasses;
+
+	static uint32 GetMeshHash(UMeshComponent* MeshComponent)
+	{
+		if (!MeshComponent)
+		{
+			return 0;
+		}
+		
+		auto HashValue = GetTypeHash(MeshComponent);
+
+		if (UStaticMeshComponent* StaticMeshComponent = Cast<UStaticMeshComponent>(MeshComponent))
+		{
+			HashValue = HashCombine(HashValue, GetTypeHash(StaticMeshComponent->GetStaticMesh()));
+		}
+		else if (UDynamicMeshComponent* DynamicMeshComponent = Cast<UDynamicMeshComponent>(MeshComponent))
+		{
+			HashValue = HashCombine(HashValue, GetTypeHash(DynamicMeshComponent->GetDynamicMesh()->GetTriangleCount()));
+		}
+		else
+		{
+			HashValue = 0;
+		}
+
+		return HashValue;
+	}
 };
-
+	
 /**
  * Quickly apply simple, colorful shading to meshes.
  */
@@ -91,15 +244,6 @@ public:
 	UPROPERTY(DisplayName = "🧱 Texture Override", Category = "🎨 Simple Surface", EditAnywhere, BlueprintReadWrite, Setter = SetParameter_Texture, meta = (DisplayPriority = 30, DisplayAfter = Appearance))
 	TObjectPtr<UTexture> Texture;
 
-	bool bDirty;
-
-	/**
-	 * If enabled, the component will monitor its actor and reapply the surface when components are added, removed, and changed.
-	 */
-	UPROPERTY(DisplayName = "⏰ Apply to new components and meshes", Category = "🎨 Simple Surface", EditAnywhere, BlueprintReadWrite, Setter = SetParameter_PollingEnabled, AdvancedDisplay);
-
-	bool bPollingEnabled = true;
-
 	/**
 	 * Initializes the component by setting up internal data structures used to monitor changes to components and materials.
 	 */
@@ -111,11 +255,6 @@ public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
 	                           FActorComponentTickFunction* ThisTickFunction) override;
 
-	/**
-	 * Responds to property changes by marking internal state for update.
-	 */
-	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
-
 	virtual void OnRegister() override;
 
 private:
@@ -126,26 +265,12 @@ private:
 	TObjectPtr<UMaterialInstance> BaseMaterial;
 
 	/**
-	 * Stores soft references to captured materials so they may be restored if the component is deleted, even across Editor sessions.
+	 * Keeps a record of materials applied to mesh components, so they can be restored if the component is deleted or deactivated.
 	 */
 	UPROPERTY()
-	TArray<FCapturedMaterialSlotsEx> CapturedMaterials;
-
+	TMap<TSoftObjectPtr<UMeshComponent>, FMeshCatalogRecord> CapturedMeshCatalog;
+		
 	int32 CapturedMeshComponentCount;
-
-	/// All mesh components owned by this component's owner.  Preallocated for monitoring mesh components and their materials.  This collection should NOT be copied between or shared between instances.
-	// ReSharper disable once CppUE4ProbableMemoryIssuesWithUObjectsInContainer -- Would prefer to use TWeakObjectPtr but it doesn't play nice with GetComponents() 
-	TArray<UMeshComponent*> MonitorBuffer_MeshComponents;
-
-	/// Preallocated space for gathering mesh components' materials.  This collection should NOT be copied between or shared between instances.
-	// ReSharper disable once CppUE4ProbableMemoryIssuesWithUObjectsInContainer -- Would prefer to use TWeakObjectPtr but it doesn't play nice with GetComponents() 
-	TArray<UMaterialInterface*> MonitorBuffer_TempMaterials;
-	
-	/// Preallocated array used for monitoring materials.  This collection should NOT be copied between or shared between instances.
-	TArray<TWeakObjectPtr<UMaterialInterface>> MonitorBuffer_LastUsedMaterials;
-
-	/// Preallocated array used for monitoring materials.  This collection should NOT be copied between or shared between instances.
-	TArray<TWeakObjectPtr<UMaterialInterface>> MonitorBuffer_CurrentlyUsedMaterials;
 	
 	void SetParameter_Color(const FColor& InColor);
 	void SetParameter_Glow(const float& InGlow);
@@ -154,7 +279,6 @@ private:
 	void SetParameter_Texture(UTexture* InTexture);
 	void SetParameter_TextureIntensity(const float& InValue);
 	void SetParameter_TextureScale(const float& InValue);
-	void SetParameter_PollingEnabled(const bool& bEnable);
 
 protected:
 	/**
@@ -164,11 +288,12 @@ protected:
 
 	void ApplyParametersToMaterial() const;
 
+	/**
+	 * Applies the SimpleSurface material to all meshes of the owning actor.
+	 */
 	void ApplyMaterialToMeshes() const;
 
 	static TArray<int32> GetIndexPath(USceneComponent& Component);
-	static void SerializeComponentMaterialMap(ComponentMaterialMap &InMap, TArray<FCapturedMaterialSlotsEx> &OutArray);
-	void DeserializeComponentMaterialMap(TArray<FCapturedMaterialSlotsEx> &InArray, ComponentMaterialMap &OutMap) const;
 
 	/**
 	 * Updates this component's internal state to capture the actor's current mesh components and their assigned materials,
@@ -176,6 +301,8 @@ protected:
 	 *
 	 * This also works across sessions. :)
 	 *
+	 * @see TryRestoreMaterials
+	 * 
 	 * @remarks This function captures two data structures:
 	 *   1. a transient map of mesh component references and their materials, used to reconcile changes to the actor's components while SimpleSurface is active
 	 *   2. a map of mesh component "paths" and their materials, used when duplicating actors and their components  
@@ -187,8 +314,6 @@ protected:
 	 * If components or referenced materials are no longer valid, they are ignored.
 	 */
 	void TryRestoreMaterials();
-
-	void ClearCapturedMaterials();
 
 	ComponentMaterialMap CreateComponentMaterialMap() const;
 	void UpdateComponentMaterialMap(ComponentMaterialMap &InOutMap) const;

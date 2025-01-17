@@ -1,7 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
-
-
-#include "SimpleSurfaceComponent.h"
+﻿#include "SimpleSurfaceComponent.h"
 
 #include "GameFramework/Actor.h"
 #include "Components/MeshComponent.h"
@@ -18,7 +15,6 @@ DEFINE_LOG_CATEGORY(LogSimpleSurface);
 void USimpleSurfaceComponent::DestroyComponent(const bool bPromoteChildren)
 {
 	TryRestoreMaterials();
-	ClearCapturedMaterials();
 	Super::DestroyComponent(bPromoteChildren);
 }
 
@@ -64,24 +60,14 @@ void USimpleSurfaceComponent::SetParameter_TextureScale(const float& InValue)
 	ApplyParametersToMaterial();
 }
 
-void USimpleSurfaceComponent::SetParameter_PollingEnabled(const bool& bEnabled)
-{
-	PrimaryComponentTick.bCanEverTick = bEnabled;
-	PrimaryComponentTick.bStartWithTickEnabled = bEnabled;
-	PrimaryComponentTick.bTickEvenWhenPaused = bEnabled;
-}
-
 // Sets default values for this component's properties
 USimpleSurfaceComponent::USimpleSurfaceComponent(FObjectInitializer const& ObjectInitializer)
 	: Super(ObjectInitializer),
-	MonitorBuffer_MeshComponents({}),
-	MonitorBuffer_TempMaterials({}),
-	MonitorBuffer_LastUsedMaterials({}),
-	MonitorBuffer_CurrentlyUsedMaterials({})
+	CapturedMeshComponentCount(0)
 {
 	PrimaryComponentTick.bCanEverTick = true;
 	bTickInEditor = true;
-	
+
 	bAutoActivate = true;
 	bWantsInitializeComponent = true;
 
@@ -106,8 +92,8 @@ void USimpleSurfaceComponent::ApplyAll() const
 
 void USimpleSurfaceComponent::Activate(bool bReset)
 {
+	CaptureMaterials();
 	ApplyAll();
-	
 	Super::Activate(bReset);
 }
 
@@ -119,7 +105,7 @@ void USimpleSurfaceComponent::Deactivate()
 
 void USimpleSurfaceComponent::InitializeSharedMID()
 {
-	UE_LOG(LogSimpleSurface, Verbose, TEXT("Initializing shared MID with outer %s (%p)"), *GetName(), this);
+	UE_LOG(LogSimpleSurface, Verbose, TEXT("Initializing shared MID with outer %s (%p)"), *GetName(), this)
 
 	// When duplicating actors, we must ensure that duplicated SimpleSurfaceComponents get their own instance of the SimpleSurfaceMaterial.
 	if (!SimpleSurfaceMaterial || SimpleSurfaceMaterial.GetOuter() != this)
@@ -130,7 +116,7 @@ void USimpleSurfaceComponent::InitializeSharedMID()
 
 void USimpleSurfaceComponent::ApplyParametersToMaterial() const
 {
-	check(SimpleSurfaceMaterial.Get());
+	check(SimpleSurfaceMaterial.Get())
 	SimpleSurfaceMaterial->SetVectorParameterValue("Color", Color);
 	SimpleSurfaceMaterial->SetScalarParameterValue("Glow", Glow);
 	SimpleSurfaceMaterial->SetScalarParameterValue("Waxiness / Metalness", WaxinessMetalness);
@@ -151,7 +137,7 @@ void USimpleSurfaceComponent::ApplyMaterialToMeshes() const
 	TArray<UMeshComponent*> MeshComponents;
 	GetOwner()->GetComponents<UMeshComponent>(MeshComponents);
 
-	check(SimpleSurfaceMaterial.Get());
+	check(SimpleSurfaceMaterial.Get())
 
 	for (auto MeshComponent : MeshComponents)
 	{
@@ -173,7 +159,7 @@ ComponentMaterialMap USimpleSurfaceComponent::CreateComponentMaterialMap() const
 	TArray<TObjectPtr<UMeshComponent>> AllMeshComponents;
 	GetOwner()->GetComponents<UMeshComponent>(AllMeshComponents);
 	
-	for (auto MeshComponent : AllMeshComponents)
+	for (const auto& MeshComponent : AllMeshComponents)
 	{
 		TMap<int32, TObjectPtr<UMaterialInterface>> MaterialMap;
 		for (int32 i = 0; i < MeshComponent->GetNumMaterials(); i++)
@@ -207,7 +193,7 @@ void USimpleSurfaceComponent::UpdateComponentMaterialMap(ComponentMaterialMap& I
 	auto ExistingComponents = CurrentComponentsSet.Intersect(OldKeys);
 	
 	// Add new components
-	for (auto NewComponent : NewComponents)
+	for (const auto& NewComponent : NewComponents)
 	{
 		auto MaterialsBySlot = TMap<int32, TObjectPtr<UMaterialInterface>>();
 		for (int32 i = 0; i < NewComponent->GetNumMaterials(); i++)
@@ -218,13 +204,13 @@ void USimpleSurfaceComponent::UpdateComponentMaterialMap(ComponentMaterialMap& I
 	}
 
 	// Remove old components
-	for (auto MissingComponent : MissingComponents)
+	for (const auto& MissingComponent : MissingComponents)
 	{
 		InOutMap.Remove(MissingComponent);
 	}
 
 	// Update existing components
-	for (auto ExistingComponent : ExistingComponents)
+	for (const auto& ExistingComponent : ExistingComponents)
 	{
 		auto& MaterialsBySlot = InOutMap[ExistingComponent];
 		MaterialsBySlot.Reset();
@@ -256,62 +242,33 @@ TArray<int32> USimpleSurfaceComponent::GetIndexPath(USceneComponent& Component)
 	return IndexPath;	
 }
 
-void USimpleSurfaceComponent::SerializeComponentMaterialMap(ComponentMaterialMap &InMap, TArray<FCapturedMaterialSlotsEx> &OutArray)
-{
-	OutArray.Reset();
-	for (auto& Pair : InMap)
-	{
-		auto& MeshComponent = *Pair.Key.Get();
-		FCapturedMaterialSlotsEx CapturedMeshMaterials;
-		CapturedMeshMaterials.ComponentPathAsChildIndexes = GetIndexPath(MeshComponent);
-		CapturedMeshMaterials.MaterialsBySlot = Pair.Value;
-		OutArray.Add(CapturedMeshMaterials);
-	}
-}
-
-void USimpleSurfaceComponent::DeserializeComponentMaterialMap(TArray<FCapturedMaterialSlotsEx>& InArray,
-	ComponentMaterialMap& OutMap) const
-{
-	for (auto CapturedMeshMaterials : InArray)
-	{
-		auto Component = GetOwner()->GetRootComponent();
-		for (auto ChildIndex : CapturedMeshMaterials.ComponentPathAsChildIndexes)
-		{
-			if (!Component)
-			{
-				Component = GetOwner()->GetRootComponent();
-			}
-			else
-			{
-				Component = Component->GetChildComponent(ChildIndex);
-			}
-		}
-
-		if (!Component)
-		{
-			continue;
-		}
-
-		auto MeshComponent = Cast<UMeshComponent>(Component);
-		if (!MeshComponent)
-		{
-			continue;
-		}
-
-		auto& MaterialsBySlot = OutMap.FindOrAdd(MeshComponent);
-		MaterialsBySlot = CapturedMeshMaterials.MaterialsBySlot;
-	}
-}
-
 void USimpleSurfaceComponent::CaptureMaterials()
 {
-	if (!GetOwner())
+	if (!GetOwner() || !SimpleSurfaceMaterial)
 	{
 		return;
-	}
+	}	
+	
+	// Update our records of all mesh components' current materials.
+	TArray<TObjectPtr<UMeshComponent>> AllMeshComponents;
+	GetOwner()->GetComponents<UMeshComponent>(AllMeshComponents);
+	for (const auto& MeshComponent : AllMeshComponents)
+	{
+		if (!MeshComponent.Get())
+		{
+			CapturedMeshCatalog.Remove(MeshComponent);
+			continue;
+		}
 
-	UpdateComponentMaterialMap(TransientComponentMaterialMap);
-	SerializeComponentMaterialMap(TransientComponentMaterialMap, CapturedMaterials);
+		if (auto FoundCatalogRecord = CapturedMeshCatalog.Find(MeshComponent))
+		{
+			FoundCatalogRecord->UpdateRecord(*MeshComponent);			
+		}
+		else
+		{
+			CapturedMeshCatalog.Add(MeshComponent, FMeshCatalogRecord(*MeshComponent, { SimpleSurfaceMaterial.GetClass() }));
+		}
+	}
 }
 
 void USimpleSurfaceComponent::TryRestoreMaterials()
@@ -321,30 +278,31 @@ void USimpleSurfaceComponent::TryRestoreMaterials()
 		return;
 	}
 
-	for (auto& ComponentToMaterialsKvp : TransientComponentMaterialMap)
+	for (auto& ComponentToCatalogRecordKvp : CapturedMeshCatalog)
 	{
-		auto const &MeshComponent = ComponentToMaterialsKvp.Key;
-		auto const &MaterialSlots = ComponentToMaterialsKvp.Value;
+		auto const &MeshComponent = ComponentToCatalogRecordKvp.Key;
+		auto const &CatalogRecord = ComponentToCatalogRecordKvp.Value;
 
-		if (MeshComponent)
+		// Start by clearing all override materials, including SimpleSurface.
+		MeshComponent->EmptyOverrideMaterials();
+
+		// Now restore captured materials.
+		if (auto SafeComponent = MeshComponent.Get())
 		{
-			for (auto& SlotToMaterialKvp : MaterialSlots)
-			{
-				MeshComponent->SetMaterial(SlotToMaterialKvp.Key, SlotToMaterialKvp.Value.Get());
-			}
+			CatalogRecord.ApplyMaterials(*SafeComponent);
 		}
-	}
-}
-
-void USimpleSurfaceComponent::ClearCapturedMaterials()
-{
-	CapturedMaterials.Empty();
+		else
+		{
+			// No point keeping the record if the MeshComponent no longer exists.
+			CapturedMeshCatalog.Remove(MeshComponent);
+		}
+	}	
 }
 
 void USimpleSurfaceComponent::InitializeComponent()
 {
-	UE_LOG(LogSimpleSurface, Verbose, TEXT(__FUNCSIG__));
-	
+	UE_LOG(LogSimpleSurface, Verbose, TEXT(__FUNCSIG__))
+
 	Super::InitializeComponent();
 }
 
@@ -357,22 +315,20 @@ bool USimpleSurfaceComponent::MonitorForChanges(bool bForceUpdate)
 	
 	bool bChangeOccurred = false;
 
-	TArray<UMeshComponent*, TInlineAllocator<32>> TempComponents;
-	GetOwner()->GetComponents<UMeshComponent>(TempComponents);
-	int32 CurrentMeshComponentCount = TempComponents.Num();
+	TArray<UMeshComponent*, TInlineAllocator<32>> CurrentMeshComponents;
+	GetOwner()->GetComponents<UMeshComponent>(CurrentMeshComponents);
+	int32 CurrentMeshComponentCount = CurrentMeshComponents.Num();
 	
-	// Has the component list or any meshes changed?
+	// Has the number of mesh components changed?
 	if (CurrentMeshComponentCount != CapturedMeshComponentCount)
 	{
-		// If so, re-capture the mesh components so they're fast to query.
-		GetOwner()->GetComponents<UMeshComponent>(MonitorBuffer_MeshComponents);
-
 		CapturedMeshComponentCount = CurrentMeshComponentCount;
 		bChangeOccurred = true;
 	}
 
 	// Are there any materials in use that aren't SimpleSurface?
-	for (auto Component : TempComponents)
+	// This indicates that a mesh has changed, and the new mesh has more material slots than the old mesh.
+	for (auto Component : CurrentMeshComponents)
 	{
 		if (!Component->HasOverrideMaterials())
 		{
@@ -397,14 +353,6 @@ bool USimpleSurfaceComponent::MonitorForChanges(bool bForceUpdate)
 	return bChangeOccurred;
 }
 
-void USimpleSurfaceComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
-{
-	UE_LOG(LogSimpleSurface, Verbose, TEXT(__FUNCSIG__));
-	bDirty = true;
-	Super::PostEditChangeProperty(PropertyChangedEvent);
-}
-
-
 void USimpleSurfaceComponent::OnRegister()
 {
 	InitializeSharedMID();
@@ -414,26 +362,11 @@ void USimpleSurfaceComponent::OnRegister()
 		return;
 	}
 
-	if (TransientComponentMaterialMap.Num() == 0)
-	{
-		if (CapturedMaterials.Num() > 0)
-		{
-			// If we have captured materials but no transient map, we can assume this follows a duplication, and we rebuild the transient map to support subsequent monitoring.
-			DeserializeComponentMaterialMap(CapturedMaterials, TransientComponentMaterialMap);
-		}
-		else if (CapturedMaterials.Num() == 0)
-		{
-			// Otherwise we create the transient map from scratch, and let it be updated normally from now on.
-			TransientComponentMaterialMap = CreateComponentMaterialMap();
-		}
-	}
+	CaptureMaterials();
 
 	// Initialize/reset the buffers for subsequent monitoring.
 	MonitorForChanges(true);
 	
-	// Make sure a serialization of the map is ready in case it's needed soon.
-	SerializeComponentMaterialMap(TransientComponentMaterialMap, CapturedMaterials);
-
 	// Calling ApplyAll() here ensures that all UMeshComponents on this actor that may already be using a SimpleSurfaceMaterial are using *this* component's instance of the SimpleSurfaceMaterial.
 	// This is important following an actor duplication; we can't the duplicate's UMeshComponents referencing the original's SimpleSurfaceMaterial. 
 	ApplyAll();
@@ -446,18 +379,14 @@ void USimpleSurfaceComponent::TickComponent(float DeltaTime, ELevelTick TickType
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	if (bDirty)
-	{
-		UE_LOG(LogSimpleSurface, Verbose, TEXT("%hs: responding to dirty flag by applying parameters to materials."), __FUNCSIG__);
-		ApplyParametersToMaterial();
-		bDirty = false;
-	}
+	UE_LOG(LogSimpleSurface, Verbose, TEXT("%hs: responding to dirty flag by applying parameters to materials."), __FUNCSIG__)
+	ApplyParametersToMaterial();
 	
 	if (MonitorForChanges())
 	{
 		UE_LOG(LogSimpleSurface, Verbose, TEXT("%hs: Change in mesh components or materials detected.  Recapturing materials and re-applying surface."), __FUNCSIG__)
 
-		// Re-capture the most up-to-date meshcomponent->materials maps.
+		// Re-capture the most up-to-date component->materials maps.
 		CaptureMaterials();
 
 		// Re-apply SimpleSurface to all material slots.

@@ -19,3 +19,7 @@ Now you can change its color and some simple surface properties to get a differe
 If you remove the component (or deactivate it using Blueprint), the meshes' original materials will be restored.
 
 Works with most mesh components available in Unreal Engine 5.5.
+
+## Buy Me a Coffee!
+Contribute to the creation of handy tools for game creators!
+https://buymeacoffee.com/object017

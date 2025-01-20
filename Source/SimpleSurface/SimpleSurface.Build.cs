@@ -8,8 +8,8 @@ public class SimpleSurface : ModuleRules
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 
-		// TODO: Omit me or add some compiler directives
-		OptimizeCode = CodeOptimization.Never;
+		// For debugging
+		//OptimizeCode = CodeOptimization.Never;
 		
 		PublicIncludePaths.AddRange(
 			new string[] {

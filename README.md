@@ -1,14 +1,15 @@
 # Simple Surface
 ## What is it?
-Simple Surface lets you quickly add color and a bit of texture to mesh actors.
+Simple Surface lets you quickly add color and a bit of texture to actors' mesh components.  Useful for visual variation during blockout and prototyping.
 
-## Why should I care?
-When an editor like Unreal offers me a drag-and-drop workflow for simple primitives, you might expect to be able to change those primitives' color without having to hook anything up, like you can in one of my favorite editor UXs, [Dreams](https://www.playstation.com/en-us/games/dreams/).
+https://github.com/user-attachments/assets/4d05b12b-522a-4a56-9002-380fa7f082ef
 
-This is a quality-of-life plugin designed to be an easy-to-use, non-intrusive addition to your workflow.  I made it for myself and all other Unreal Engine creators who've ever wished they could simply change a cube's color after dropping it into a scene, without hunting for a material, creating a new "throwaway" shader for the nth time, or whipping up a Blueprint that connects a color picker in the Details panel to a mesh's material.
+This is a quality-of-life plugin designed to be an easy-to-use, non-intrusive addition to your workflow, to help you achieve some visual variety without needing to create throwaway assets.
 
 ## How do I use it?
 Add the Simple Surface component to any actor having one or more mesh components.
+
+![SimpleSurface](https://github.com/user-attachments/assets/a972d4a1-959a-43bc-a616-216e5b9d8e00)
 
 Now you can change its color and some simple surface properties to get a different look:
 * Shininess / Roughness
@@ -17,5 +18,4 @@ Now you can change its color and some simple surface properties to get a differe
 
 If you remove the component (or deactivate it using Blueprint), the meshes' original materials will be restored.
 
-## How do I get it?
-It's not quite ready yet.  Stay tuned!
+Works with most mesh components available in Unreal Engine 5.5.

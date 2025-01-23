@@ -220,7 +220,7 @@ public:
 	UPROPERTY(DisplayName = "🖌️ Color", Category = "🎨 Simple Surface", EditAnywhere, BlueprintReadWrite, Setter = SetParameter_Color, meta = (HideAlphaChannel))
 	FColor Color = FColor::FromHex("D84DC2");
 
-	UPROPERTY(DisplayName = "☀️ Glow", Category = "🎨 Simple Surface", EditAnywhere, BlueprintReadWrite, meta=(ClampMin=0.0f, ClampMax=1.0f), Setter = SetParameter_Glow)
+	UPROPERTY(DisplayName = "☀️ Glow", Category = "🎨 Simple Surface", EditAnywhere, BlueprintReadWrite, meta=(ClampMin=0.0f, ClampMax=10.0f), Setter = SetParameter_Glow)
 	float Glow = 0.0f;
 
 	UPROPERTY(DisplayName = "💎 Shininess / Roughness 🍞", Category = "🎨 Simple Surface", EditAnywhere, BlueprintReadWrite, meta=(ClampMin=0.0f, ClampMax=1.0f), Setter = SetParameter_ShininessRoughness)

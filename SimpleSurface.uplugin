@@ -1,8 +1,8 @@
 {
 	"FileVersion": 3,
 	"Version": 1,
-	"VersionName": "1.0.1",
-	"FriendlyName": "SimpleSurface",
+	"VersionName": "1.0.2",
+	"FriendlyName": "Simple Surface",
 	"Description": "Quickly apply colorful, tweakable shading to meshes.",
 	"Category": "Rendering",
 	"CreatedBy": "Jeff Stewart",

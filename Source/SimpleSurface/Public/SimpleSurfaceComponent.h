@@ -132,6 +132,9 @@ struct FMeshCatalogRecord
 		}
 	}
 
+	/**
+	 * Returns true if the mesh presented by the specified UMeshComponent is the same as the mesh presented by the mesh component that this record was created from.
+	 */
 	bool MeshEquals(UMeshComponent& Component) const
 	{
 		return MeshHash == GetMeshHash(&Component);
@@ -200,7 +203,7 @@ public:
 	/**
 	 * Applies configured properties to the SimpleSurface material and applies the material to all mesh components. 
 	 */
-	void ApplyAll() const;
+	void ApplyAll();
 
 	/**
 	 * Handle the component's being turned on.
@@ -307,7 +310,7 @@ protected:
 	 *   1. a transient map of mesh component references and their materials, used to reconcile changes to the actor's components while SimpleSurface is active
 	 *   2. a map of mesh component "paths" and their materials, used when duplicating actors and their components  
 	 */
-	void CaptureMaterials();
+	void UpdateMeshCatalog();
 
 	/**
 	 * Attempts to restore captured materials to their original state.
@@ -320,7 +323,7 @@ protected:
 	
 	/**
 	 * Compares the current state of mesh components and materials to the last known state and returns true if a change
-	 * occurred that warrants re-applying SimpleSurface.  Updates the data in the process.
+	 * occurred that warrants re-applying SimpleSurface.  Does not update any data if changes are found.
 	 */
-	bool MonitorForChanges(bool bForceUpdate = false);
+	bool MonitorForChanges() const;
 };

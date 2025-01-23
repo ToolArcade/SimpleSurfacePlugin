@@ -81,10 +81,11 @@ USimpleSurfaceComponent::USimpleSurfaceComponent(FObjectInitializer const& Objec
 	}
 }
 
-void USimpleSurfaceComponent::ApplyAll() const
+void USimpleSurfaceComponent::ApplyAll()
 {
 	if (SimpleSurfaceMaterial)
 	{
+		Modify();
 		ApplyParametersToMaterial();
 		ApplyMaterialToMeshes();
 	}
@@ -92,7 +93,7 @@ void USimpleSurfaceComponent::ApplyAll() const
 
 void USimpleSurfaceComponent::Activate(bool bReset)
 {
-	CaptureMaterials();
+	UpdateMeshCatalog();
 	ApplyAll();
 	Super::Activate(bReset);
 }
@@ -143,6 +144,9 @@ void USimpleSurfaceComponent::ApplyMaterialToMeshes() const
 	{
 		for (auto i = 0; i < MeshComponent->GetNumMaterials(); i++)
 		{
+			// Ensure undo/redo capture for all components whose materials we're changing.
+			MeshComponent->Modify();
+			
 			MeshComponent->SetMaterial(i, SimpleSurfaceMaterial.Get());
 		}
 	}
@@ -242,7 +246,7 @@ TArray<int32> USimpleSurfaceComponent::GetIndexPath(USceneComponent& Component)
 	return IndexPath;	
 }
 
-void USimpleSurfaceComponent::CaptureMaterials()
+void USimpleSurfaceComponent::UpdateMeshCatalog()
 {
 	if (!GetOwner() || !SimpleSurfaceMaterial)
 	{
@@ -252,6 +256,7 @@ void USimpleSurfaceComponent::CaptureMaterials()
 	// Update our records of all mesh components' current materials.
 	TArray<TObjectPtr<UMeshComponent>> AllMeshComponents;
 	GetOwner()->GetComponents<UMeshComponent>(AllMeshComponents);
+	CapturedMeshComponentCount = AllMeshComponents.Num();
 	for (const auto& MeshComponent : AllMeshComponents)
 	{
 		if (!MeshComponent.Get())
@@ -278,25 +283,35 @@ void USimpleSurfaceComponent::TryRestoreMaterials()
 		return;
 	}
 
+	TSet<TSoftObjectPtr<UMeshComponent>> MarkedForRemoval;
+	
 	for (auto& ComponentToCatalogRecordKvp : CapturedMeshCatalog)
 	{
 		auto const &MeshComponent = ComponentToCatalogRecordKvp.Key;
 		auto const &CatalogRecord = ComponentToCatalogRecordKvp.Value;
 
-		// Start by clearing all override materials, including SimpleSurface.
-		MeshComponent->EmptyOverrideMaterials();
-
 		// Now restore captured materials.
 		if (auto SafeComponent = MeshComponent.Get())
 		{
+			// Ensure undo/redo capture for all components whose materials we're reverting.
+			MeshComponent->Modify();
+			
+			// Start by clearing all override materials, including SimpleSurface.
+			MeshComponent->EmptyOverrideMaterials();
+
 			CatalogRecord.ApplyMaterials(*SafeComponent);
 		}
 		else
 		{
 			// No point keeping the record if the MeshComponent no longer exists.
-			CapturedMeshCatalog.Remove(MeshComponent);
+			MarkedForRemoval.Add(MeshComponent);
 		}
-	}	
+	}
+
+	for (auto& Component : MarkedForRemoval)
+	{
+		CapturedMeshCatalog.Remove(Component);
+	}
 }
 
 void USimpleSurfaceComponent::InitializeComponent()
@@ -306,7 +321,7 @@ void USimpleSurfaceComponent::InitializeComponent()
 	Super::InitializeComponent();
 }
 
-bool USimpleSurfaceComponent::MonitorForChanges(bool bForceUpdate)
+bool USimpleSurfaceComponent::MonitorForChanges() const
 {
 	if (!GetOwner())
 	{
@@ -322,22 +337,36 @@ bool USimpleSurfaceComponent::MonitorForChanges(bool bForceUpdate)
 	// Has the number of mesh components changed?
 	if (CurrentMeshComponentCount != CapturedMeshComponentCount)
 	{
-		CapturedMeshComponentCount = CurrentMeshComponentCount;
 		bChangeOccurred = true;
+	}
+
+	// Have any of the components' meshes changed?
+	for (auto& ComponentToCatalogRecordKvp : CapturedMeshCatalog)
+	{
+		auto const &MeshComponent = ComponentToCatalogRecordKvp.Key;
+		auto const &CatalogRecord = ComponentToCatalogRecordKvp.Value;
+
+		auto SafeMeshComponent = MeshComponent.Get();
+		if (!CatalogRecord.MeshEquals(*SafeMeshComponent))
+		{
+			bChangeOccurred = true;
+			break;
+		}
 	}
 
 	// Are there any materials in use that aren't SimpleSurface?
 	// This indicates that a mesh has changed, and the new mesh has more material slots than the old mesh.
 	for (auto Component : CurrentMeshComponents)
 	{
-		if (!Component->HasOverrideMaterials())
+		if (Component->GetNumMaterials() == 0)
 		{
 			continue;
 		}
 
 		for (int32 i = 0; i < Component->GetNumMaterials(); i++)
 		{
-			if (!Component->GetMaterial(i)->IsA(SimpleSurfaceMaterial.GetClass()))
+			auto Material = Component->GetMaterial(i);
+			if (Material && !Material->IsA(SimpleSurfaceMaterial.GetClass()))
 			{
 				bChangeOccurred = true;
 				break;
@@ -362,11 +391,9 @@ void USimpleSurfaceComponent::OnRegister()
 		return;
 	}
 
-	CaptureMaterials();
+	// Initialize the mesh catalog.
+	UpdateMeshCatalog();
 
-	// Initialize/reset the buffers for subsequent monitoring.
-	MonitorForChanges(true);
-	
 	// Calling ApplyAll() here ensures that all UMeshComponents on this actor that may already be using a SimpleSurfaceMaterial are using *this* component's instance of the SimpleSurfaceMaterial.
 	// This is important following an actor duplication; we can't the duplicate's UMeshComponents referencing the original's SimpleSurfaceMaterial. 
 	ApplyAll();
@@ -379,7 +406,6 @@ void USimpleSurfaceComponent::TickComponent(float DeltaTime, ELevelTick TickType
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	UE_LOG(LogSimpleSurface, Verbose, TEXT("%hs: responding to dirty flag by applying parameters to materials."), __FUNCSIG__)
 	ApplyParametersToMaterial();
 	
 	if (MonitorForChanges())
@@ -387,7 +413,7 @@ void USimpleSurfaceComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		UE_LOG(LogSimpleSurface, Verbose, TEXT("%hs: Change in mesh components or materials detected.  Recapturing materials and re-applying surface."), __FUNCSIG__)
 
 		// Re-capture the most up-to-date component->materials maps.
-		CaptureMaterials();
+		UpdateMeshCatalog();
 
 		// Re-apply SimpleSurface to all material slots.
 		ApplyAll();

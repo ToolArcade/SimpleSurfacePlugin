@@ -1,7 +1,7 @@
 {
 	"FileVersion": 3,
 	"Version": 1,
-	"VersionName": "1.0.2",
+	"VersionName": "1.0.3",
 	"FriendlyName": "Simple Surface",
 	"Description": "Quickly apply colorful, tweakable shading to meshes.",
 	"Category": "Rendering",
@@ -24,6 +24,7 @@
 	"Icon": "Resources/SimpleSurfaceIcon.png",
 	"SupportedTargetPlatforms": [
 		"Win64",
-		"Mac"
+		"Mac",
+		"Linux"
 	]
 }

@@ -85,7 +85,6 @@ void USimpleSurfaceComponent::ApplyAll()
 {
 	if (SimpleSurfaceMaterial)
 	{
-		Modify();
 		ApplyParametersToMaterial();
 		ApplyMaterialToMeshes();
 	}
@@ -144,10 +143,15 @@ void USimpleSurfaceComponent::ApplyMaterialToMeshes() const
 	{
 		for (auto i = 0; i < MeshComponent->GetNumMaterials(); i++)
 		{
-			// Ensure undo/redo capture for all components whose materials we're changing.
-			MeshComponent->Modify();
+			// To avoid spurious edits that will prompt the user to save their file even if they haven't changed anything, only change materials when necessary.
+			auto Material = MeshComponent->GetMaterial(i);
+			if (Material != SimpleSurfaceMaterial.Get())
+			{
+				// Ensure undo/redo capture for all components whose materials we're changing.
+				MeshComponent->Modify();
 			
-			MeshComponent->SetMaterial(i, SimpleSurfaceMaterial.Get());
+				MeshComponent->SetMaterial(i, SimpleSurfaceMaterial.Get());
+			}
 		}
 	}
 }

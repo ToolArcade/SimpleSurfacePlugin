@@ -8,8 +8,8 @@
 	"CreatedBy": "Jeff Stewart",
 	"CreatedByURL": "https://object01.github.io",
 	"DocsURL": "https://github.com/object01/SimpleSurfacePlugin",
-	"MarketplaceURL": "",
-	"SupportURL": "",
+	"FabURL": "com.epicgames.launcher://ue/Fab/product/a8139b31-c1ab-4a8e-9e5b-cf70bf95192d",
+	"SupportURL": "https://github.com/object01/SimpleSurfacePlugin",
 	"CanContainContent": true,
 	"IsBetaVersion": false,
 	"IsExperimentalVersion": false,
@@ -18,7 +18,12 @@
 		{
 			"Name": "SimpleSurface",
 			"Type": "Runtime",
-			"LoadingPhase": "Default"
+			"LoadingPhase": "Default",
+			"PlatformAllowList": [
+				"Win64",
+				"Mac",
+				"Linux"
+			]
 		}
 	],
 	"Icon": "Resources/SimpleSurfaceIcon.png",

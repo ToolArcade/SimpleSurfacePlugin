@@ -10,6 +10,7 @@
 	"DocsURL": "https://github.com/object01/SimpleSurfacePlugin",
 	"FabURL": "com.epicgames.launcher://ue/Fab/product/a8139b31-c1ab-4a8e-9e5b-cf70bf95192d",
 	"SupportURL": "https://github.com/object01/SimpleSurfacePlugin",
+	"EngineVersion": "5.5.0",
 	"CanContainContent": true,
 	"IsBetaVersion": false,
 	"IsExperimentalVersion": false,

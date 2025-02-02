@@ -23,6 +23,14 @@
 #include "GameFramework/Actor.h"
 #include "Components/ActorComponent.h"
 
+#if defined(__FUNCSIG__)  // Microsoft Visual C++ Compiler
+	#define FUNC_SIGNATURE __FUNCSIG__
+#elif defined(__PRETTY_FUNCTION__)  // GCC or Clang
+	#define FUNC_SIGNATURE __PRETTY_FUNCTION__
+#else
+	#define FUNC_SIGNATURE __func__  // Standard C++ fallback (less detailed)
+#endif
+
 DEFINE_LOG_CATEGORY(LogSimpleSurface);
 
 void USimpleSurfaceComponent::DestroyComponent(const bool bPromoteChildren)
@@ -331,13 +339,6 @@ void USimpleSurfaceComponent::TryRestoreMaterials()
 	}
 }
 
-void USimpleSurfaceComponent::InitializeComponent()
-{
-	UE_LOG(LogSimpleSurface, Verbose, TEXT(__FUNCSIG__))
-
-	Super::InitializeComponent();
-}
-
 bool USimpleSurfaceComponent::MonitorForChanges() const
 {
 	if (!GetOwner())
@@ -427,7 +428,7 @@ void USimpleSurfaceComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	
 	if (MonitorForChanges())
 	{
-		UE_LOG(LogSimpleSurface, Verbose, TEXT("%hs: Change in mesh components or materials detected.  Recapturing materials and re-applying surface."), __FUNCSIG__)
+		UE_LOG(LogSimpleSurface, Verbose, TEXT("%hs: Change in mesh components or materials detected.  Recapturing materials and re-applying surface."), FUNC_SIGNATURE)
 
 		// Re-capture the most up-to-date component->materials maps.
 		UpdateMeshCatalog();

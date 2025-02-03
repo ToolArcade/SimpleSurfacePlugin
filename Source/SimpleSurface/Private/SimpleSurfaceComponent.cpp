@@ -28,7 +28,7 @@
 #elif defined(__PRETTY_FUNCTION__)  // GCC or Clang
 	#define FUNC_SIGNATURE __PRETTY_FUNCTION__
 #else
-	#define FUNC_SIGNATURE __func__  // Standard C++ fallback (less detailed)
+	#define FUNC_SIGNATURE __FUNCTION__  // Standard C++ fallback (less detailed)
 #endif
 
 DEFINE_LOG_CATEGORY(LogSimpleSurface);

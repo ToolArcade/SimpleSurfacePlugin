@@ -23,9 +23,9 @@
 #include "GameFramework/Actor.h"
 #include "Components/ActorComponent.h"
 
-#if defined(_MSC_VER)  // Microsoft Visual C++ Compiler
+#if defined(__FUNCSIG__)  // Microsoft Visual C++ Compiler
 	#define FUNC_SIGNATURE __FUNCSIG__
-#elif defined(__GNUC__) || defined(__clang__)  // GCC or Clang
+#elif defined(__PRETTY_FUNCTION__)  // GCC or Clang
 	#define FUNC_SIGNATURE __PRETTY_FUNCTION__
 #else
 	#define FUNC_SIGNATURE __func__  // Standard C++ fallback (less detailed)

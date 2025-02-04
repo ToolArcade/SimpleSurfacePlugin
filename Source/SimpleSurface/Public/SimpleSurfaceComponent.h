@@ -259,11 +259,6 @@ public:
 	TObjectPtr<UTexture> Texture;
 
 	/**
-	 * Initializes the component by setting up internal data structures used to monitor changes to components and materials.
-	 */
-	virtual void InitializeComponent() override;
-
-	/**
 	 * Monitors the actor's components and materials for changes and re-applies SimpleSurface if necessary.
 	 */
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,

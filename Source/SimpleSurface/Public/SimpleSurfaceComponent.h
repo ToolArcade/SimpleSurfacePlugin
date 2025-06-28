@@ -30,28 +30,39 @@ DECLARE_LOG_CATEGORY_EXTERN(LogSimpleSurface, Log, All);
 
 using ComponentMaterialMap = TMap<TObjectPtr<UMeshComponent>, TMap<int32, TObjectPtr<UMaterialInterface>>>;
 
+USTRUCT(BlueprintType)
+struct FSimpleSurfaceGridParams
+{
+	GENERATED_BODY()
+
+	FSimpleSurfaceGridParams() = default;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta=(ClampMin=-0.1f, ClampMax=1000000.0f, UIMin=10.0f, UIMax=1000.0f))
+	float GridSize = 100.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta=(ClampMin=1.0f, ClampMax=100.0f, UIMin=1.0f, UIMax=100.0f))
+	float SubGridDivisions = 5.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	bool bIsObjectAligned = false;
+};
+
+/**
+ * Captures the mesh and materials of a UMeshComponent for later restoration, e.g. if SimpleSurfaceComponent is removed.
+ */
 USTRUCT()
 struct FMeshCatalogRecord
 {
 	GENERATED_BODY()
 
-	FMeshCatalogRecord() = default;
+	FMeshCatalogRecord();
 
-	FMeshCatalogRecord(UMeshComponent& Component, const TArray<const TSoftClassPtr<UMaterialInterface>>& Ex)
-	{
-		ExcludedMaterialClasses = Ex;
-		UpdateRecord(Component);
-	}
+	FMeshCatalogRecord(UMeshComponent& Component, const TArray<const TSoftClassPtr<UMaterialInterface>>& Ex);
 
 	/**
 	 * Updates this record to reflect the specified @see UMeshComponent.
 	 */
-	void UpdateRecord(UMeshComponent& Component)
-	{
-		MeshHash = GetMeshHash(&Component);
-		IndexPath = GetIndexPath(Component);
-		UpdateMaterialsBySlot(Component);
-	}
+	void UpdateRecord(UMeshComponent& Component);
 
 	UPROPERTY()
 	TArray<int32> IndexPath;
@@ -59,108 +70,36 @@ struct FMeshCatalogRecord
 	/**
 	 * Returns an array of indexes that represent the path to the component from the root component.
 	 */
-	static TArray<int32> GetIndexPath(UMeshComponent& MeshComponent)
-	{
-		TArray<int32> Result;
-		USceneComponent* Current = &MeshComponent;
-		while (Current)
-		{
-			if (auto Parent = Cast<USceneComponent>(Current->GetAttachParent()))
-			{
-				Result.Insert(Parent->GetAttachChildren().Find(Current), 0);
-				Current = Parent;
-			}
-			else
-			{
-				break;
-			}
-		}
-		
-		return Result;
-	}
+	static TArray<int32> GetIndexPath(UMeshComponent& MeshComponent);
 
 	/**
 	 * Uses @see IndexPath to locate a component on the specified actor.  Useful for remapping a record to a new actor, e.g. after duplication. 
 	 */
-	UMeshComponent* LocateComponent(const AActor &Actor)
-	{
-		// Locate the component corresponding to IndexPath.
-		USceneComponent* Current = Actor.GetRootComponent();
-		for (auto Index : IndexPath)
-		{
-			if (Current)
-			{
-				auto Children = Current->GetAttachChildren();
-				if (Index < Children.Num())
-				{
-					Current = Children[Index];
-				}
-				else
-				{
-					Current = nullptr;
-				}
-			}
-			else
-			{
-				break;
-			}
-		}
-
-		return Cast<UMeshComponent>(Current);
-	}
+	UMeshComponent* LocateComponent(const AActor &Actor);
 
 	/**
 	 * Applies the materials captured by this record to the specified UMeshComponent.
 	 */
-	void ApplyMaterials(UMeshComponent& MeshComponent) const
-	{
-		for (int32 i = 0; i < MaterialsBySlot.Num(); ++i)
-		{
-			auto SoftMaterialPtr = MaterialsBySlot[i];
-			if (const auto Material = SoftMaterialPtr.IsValid() ? SoftMaterialPtr.Get() : SoftMaterialPtr.LoadSynchronous())
-			{
-				MeshComponent.SetMaterial(i, Material);
-			}
-		}
-	}
+	void ApplyMaterials(UMeshComponent& MeshComponent) const;
 
 	/**
 	 * Accumulates the materials used by the specified UMeshComponent into this record's MaterialsBySlot.
 	 * Skips any materials matching the classes in ExcludedMaterialClasses.
 	 */
-	void UpdateMaterialsBySlot(const UMeshComponent& MeshComponent)
-	{
-		// Take care to update the slots one by one, don't just copy the array; because we don't want to capture
-		// excluded materials.
-		MaterialsBySlot.SetNum(MeshComponent.GetNumMaterials());
-		for (auto i = 0; i < MeshComponent.GetNumMaterials(); i++)
-		{
-			auto Material = MeshComponent.GetMaterial(i);
-			if (Material && !ExcludedMaterialClasses.Contains(Material->GetClass()))
-			{
-				MaterialsBySlot[i] = Material;
-			}
-		}
-	}
+	void UpdateMaterialsBySlot(const UMeshComponent& MeshComponent);
 
 	/**
 	 * Returns true if the mesh presented by the specified UMeshComponent is the same as the mesh presented by the mesh component that this record was created from.
 	 */
-	bool MeshEquals(UMeshComponent& Component) const
-	{
-		return MeshHash == GetMeshHash(&Component);
-	}
+	bool MeshEquals(UMeshComponent& Component) const;
 
-	bool operator==(const FMeshCatalogRecord& Other) const
-	{
-		return MeshHash == Other.MeshHash && MaterialsBySlot == Other.MaterialsBySlot;
-	}
+	bool operator==(const FMeshCatalogRecord& Other) const;
 
 	/**
 	 * A hash of the mesh presented by MeshComponent.  Used to determine if an existing MeshComponent's mesh changed.
 	 */
 	UPROPERTY()
-	uint32 MeshHash;
+	uint32 MeshHash = -1;
 
 	/**
 	 * A map of material slot indexes to materials.
@@ -171,30 +110,7 @@ struct FMeshCatalogRecord
 	UPROPERTY()
 	TArray<const TSoftClassPtr<UMaterialInterface>> ExcludedMaterialClasses;
 
-	static uint32 GetMeshHash(UMeshComponent* MeshComponent)
-	{
-		if (!MeshComponent)
-		{
-			return 0;
-		}
-		
-		auto HashValue = GetTypeHash(MeshComponent);
-
-		if (UStaticMeshComponent* StaticMeshComponent = Cast<UStaticMeshComponent>(MeshComponent))
-		{
-			HashValue = HashCombine(HashValue, GetTypeHash(StaticMeshComponent->GetStaticMesh()));
-		}
-		else if (UDynamicMeshComponent* DynamicMeshComponent = Cast<UDynamicMeshComponent>(MeshComponent))
-		{
-			HashValue = HashCombine(HashValue, GetTypeHash(DynamicMeshComponent->GetDynamicMesh()->GetTriangleCount()));
-		}
-		else
-		{
-			HashValue = 0;
-		}
-
-		return HashValue;
-	}
+	static uint32 GetMeshHash(UMeshComponent* MeshComponent);
 };
 	
 /**
@@ -258,6 +174,12 @@ public:
 	UPROPERTY(DisplayName = "🧱 Texture Override", Category = "🎨 Simple Surface", EditAnywhere, BlueprintReadWrite, Setter = SetParameter_Texture, meta = (DisplayPriority = 30, DisplayAfter = Appearance))
 	TObjectPtr<UTexture> Texture;
 
+	UPROPERTY(DisplayName = "📐 Grid Intensity", Category = "🎨 Simple Surface", EditAnywhere, BlueprintReadWrite, Setter = SetParameter_ShowGrid, meta = (ClampMin = -1.0f, ClampMax = 1.0f, DisplayPriority = 40, DisplayAfter = Appearance))
+	float ShowGrid = 0.0f;
+
+	UPROPERTY(DisplayName = "📐 Grid Tweaks", Category = "🎨 Simple Surface", EditAnywhere, BlueprintReadWrite, Setter = SetParameter_GridSettings, meta = (DisplayPriority = 50, DisplayAfter = Appearance))
+	FSimpleSurfaceGridParams GridParams;
+	
 	/**
 	 * Monitors the actor's components and materials for changes and re-applies SimpleSurface if necessary.
 	 */
@@ -288,6 +210,8 @@ private:
 	void SetParameter_Texture(UTexture* InTexture);
 	void SetParameter_TextureIntensity(const float& InValue);
 	void SetParameter_TextureScale(const float& InValue);
+	void SetParameter_ShowGrid(const float& InValue);
+	void SetParameter_GridSettings(const FSimpleSurfaceGridParams& InParams);
 
 protected:
 	/**

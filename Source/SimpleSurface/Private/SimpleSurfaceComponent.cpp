@@ -81,6 +81,143 @@ void USimpleSurfaceComponent::SetParameter_TextureScale(const float& InValue)
 	ApplyParametersToMaterial();
 }
 
+void USimpleSurfaceComponent::SetParameter_ShowGrid(const float& InValue)
+{
+	this->ShowGrid = InValue;
+	ApplyParametersToMaterial();
+}
+
+void USimpleSurfaceComponent::SetParameter_GridSettings(const FSimpleSurfaceGridParams& InParams)
+{
+	this->GridParams = InParams;
+	ApplyParametersToMaterial();
+}
+
+FMeshCatalogRecord::FMeshCatalogRecord() = default;
+
+FMeshCatalogRecord::FMeshCatalogRecord(UMeshComponent& Component,
+	const TArray<const TSoftClassPtr<UMaterialInterface>>& Ex)
+{
+	ExcludedMaterialClasses = Ex;
+	UpdateRecord(Component);
+}
+
+void FMeshCatalogRecord::UpdateRecord(UMeshComponent& Component)
+{
+	MeshHash = GetMeshHash(&Component);
+	IndexPath = GetIndexPath(Component);
+	UpdateMaterialsBySlot(Component);
+}
+
+TArray<int32> FMeshCatalogRecord::GetIndexPath(UMeshComponent& MeshComponent)
+{
+	TArray<int32> Result;
+	USceneComponent* Current = &MeshComponent;
+	while (Current)
+	{
+		if (auto Parent = Cast<USceneComponent>(Current->GetAttachParent()))
+		{
+			Result.Insert(Parent->GetAttachChildren().Find(Current), 0);
+			Current = Parent;
+		}
+		else
+		{
+			break;
+		}
+	}
+		
+	return Result;
+}
+
+UMeshComponent* FMeshCatalogRecord::LocateComponent(const AActor& Actor)
+{
+	// Locate the component corresponding to IndexPath.
+	USceneComponent* Current = Actor.GetRootComponent();
+	for (auto Index : IndexPath)
+	{
+		if (Current)
+		{
+			auto Children = Current->GetAttachChildren();
+			if (Index < Children.Num())
+			{
+				Current = Children[Index];
+			}
+			else
+			{
+				Current = nullptr;
+			}
+		}
+		else
+		{
+			break;
+		}
+	}
+
+	return Cast<UMeshComponent>(Current);
+}
+
+void FMeshCatalogRecord::ApplyMaterials(UMeshComponent& MeshComponent) const
+{
+	for (int32 i = 0; i < MaterialsBySlot.Num(); ++i)
+	{
+		auto SoftMaterialPtr = MaterialsBySlot[i];
+		if (const auto Material = SoftMaterialPtr.IsValid() ? SoftMaterialPtr.Get() : SoftMaterialPtr.LoadSynchronous())
+		{
+			MeshComponent.SetMaterial(i, Material);
+		}
+	}
+}
+
+void FMeshCatalogRecord::UpdateMaterialsBySlot(const UMeshComponent& MeshComponent)
+{
+	// Take care to update the slots one by one, don't just copy the array; because we don't want to capture
+	// excluded materials.
+	MaterialsBySlot.SetNum(MeshComponent.GetNumMaterials());
+	for (auto i = 0; i < MeshComponent.GetNumMaterials(); i++)
+	{
+		auto Material = MeshComponent.GetMaterial(i);
+		if (Material && !ExcludedMaterialClasses.Contains(Material->GetClass()))
+		{
+			MaterialsBySlot[i] = Material;
+		}
+	}
+}
+
+bool FMeshCatalogRecord::MeshEquals(UMeshComponent& Component) const
+{
+	return MeshHash == GetMeshHash(&Component);
+}
+
+bool FMeshCatalogRecord::operator==(const FMeshCatalogRecord& Other) const
+{
+	return MeshHash == Other.MeshHash && MaterialsBySlot == Other.MaterialsBySlot;
+}
+
+uint32 FMeshCatalogRecord::GetMeshHash(UMeshComponent* MeshComponent)
+{
+	if (!MeshComponent)
+	{
+		return 0;
+	}
+		
+	auto HashValue = GetTypeHash(MeshComponent);
+
+	if (UStaticMeshComponent* StaticMeshComponent = Cast<UStaticMeshComponent>(MeshComponent))
+	{
+		HashValue = HashCombine(HashValue, GetTypeHash(StaticMeshComponent->GetStaticMesh()));
+	}
+	else if (UDynamicMeshComponent* DynamicMeshComponent = Cast<UDynamicMeshComponent>(MeshComponent))
+	{
+		HashValue = HashCombine(HashValue, GetTypeHash(DynamicMeshComponent->GetDynamicMesh()->GetTriangleCount()));
+	}
+	else
+	{
+		HashValue = 0;
+	}
+
+	return HashValue;
+}
+
 // Sets default values for this component's properties
 USimpleSurfaceComponent::USimpleSurfaceComponent(FObjectInitializer const& ObjectInitializer)
 	: Super(ObjectInitializer),
@@ -92,7 +229,6 @@ USimpleSurfaceComponent::USimpleSurfaceComponent(FObjectInitializer const& Objec
 	bAutoActivate = true;
 	bWantsInitializeComponent = true;
 
-	// TODO: Use a soft reference instead?  Unclear whether this tightly binds the plugin to the material somehow...
 	static ConstructorHelpers::FObjectFinder<UMaterialInstance> MaterialFinder(
 		TEXT("/SimpleSurface/Materials/MI_SimpleSurface.MI_SimpleSurface"));
 
@@ -146,6 +282,11 @@ void USimpleSurfaceComponent::ApplyParametersToMaterial() const
 	SimpleSurfaceMaterial->SetTextureParameterValue("Texture", Texture.Get());
 	SimpleSurfaceMaterial->SetScalarParameterValue("Texture Intensity", TextureIntensity);
 	SimpleSurfaceMaterial->SetScalarParameterValue("Texture Scale", TextureScale);
+
+	SimpleSurfaceMaterial->SetScalarParameterValue("Show Grid", ShowGrid);
+	SimpleSurfaceMaterial->SetScalarParameterValue("Grid Size", GridParams.GridSize);
+	SimpleSurfaceMaterial->SetScalarParameterValue("Sub Grid Number", GridParams.SubGridDivisions);
+	SimpleSurfaceMaterial->SetScalarParameterValue("ObjectAligned", GridParams.bIsObjectAligned ? 1.0f : 0.0f);
 }
 
 void USimpleSurfaceComponent::ApplyMaterialToMeshes() const
@@ -212,7 +353,7 @@ void USimpleSurfaceComponent::UpdateComponentMaterialMap(ComponentMaterialMap& I
 	TArray<UMeshComponent*, TInlineAllocator<32>> CurrentComponentsArray;
 	GetOwner()->GetComponents<UMeshComponent>(CurrentComponentsArray);
 	TSet<TObjectPtr<UMeshComponent>> CurrentComponentsSet;
-	Algo::Transform(CurrentComponentsArray, CurrentComponentsSet, [](UMeshComponent* x) { return TObjectPtr(*x); });
+	Algo::Transform(CurrentComponentsArray, CurrentComponentsSet, [](UMeshComponent* x) { return TObjectPtr<UMeshComponent>(x); });
 
 	TSet<TObjectPtr<UMeshComponent>> OldKeys;
 	InOutMap.GetKeys(OldKeys);
